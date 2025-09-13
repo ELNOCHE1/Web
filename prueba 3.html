@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Detector de Colores IA</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/feather-icons/dist/feather.min.js"></script>
+  <style>
+    .color-box {
+      transition: all 0.3s ease;
+    }
+    .color-box:hover {
+      transform: scale(1.08);
+      box-shadow: 0 0 20px rgba(255,255,255,0.3);
+    }
+    #preview {
+      transition: all 0.5s ease;
+      max-height: 380px;
+      object-fit: contain;
+    }
+    #preview:hover {
+      transform: scale(1.03);
+    }
+    .animated-gradient {
+      background: linear-gradient(270deg, #3b82f6, #a855f7, #ec4899, #fbbf24);
+      background-size: 800% 800%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: gradientShift 6s ease infinite;
+    }
+    @keyframes gradientShift {
+      0%{background-position:0% 50%}
+      50%{background-position:100% 50%}
+      100%{background-position:0% 50%}
+    }
+    #toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #1f2937;
+      color: white;
+      padding: 14px 20px;
+      border-radius: 12px;
+      box-shadow: 0 5px 25px rgba(0,0,0,0.5);
+      opacity: 0;
+      transform: translateY(20px);
+      transition: all 0.4s ease;
+      z-index: 50;
+      font-weight: 500;
+    }
+    #toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen flex flex-col items-center py-12 px-4">
+
+  <!-- Header -->
+  <div class="max-w-4xl w-full text-center mb-12">
+    <div class="flex justify-center mb-6">
+      <i data-feather="droplet" class="w-12 h-12 text-blue-400"></i>
+    </div>
+    <h1 class="text-5xl font-extrabold mb-4 animated-gradient">
+      Detector de Colores con IA
+    </h1>
+    <p class="text-lg text-gray-400 max-w-2xl mx-auto">
+      Sube una imagen y descubre su <span class="text-blue-400 font-semibold">paleta perfecta</span>.  
+      Ideal para diseñadores, artistas y creadores de contenido.
+    </p>
+  </div>
+
+  <!-- Upload -->
+  <div class="bg-gray-800 rounded-2xl p-8 shadow-2xl w-full max-w-3xl mb-12">
+    <div class="flex flex-col items-center">
+      <label for="fileInput" class="cursor-pointer bg-gradient-to-r from-blue-500 to-purple-600 text-white px-6 py-3 rounded-lg font-medium hover:opacity-90 transition-all duration-300 mb-6 flex items-center">
+        <i data-feather="upload" class="mr-2"></i>
+        Seleccionar Imagen
+      </label>
+      <input type="file" id="fileInput" accept="image/*" class="hidden">
+
+      <!-- Contenedor de la imagen -->
+      <div id="imageContainer" class="mt-6 w-full bg-gray-900 rounded-xl overflow-hidden shadow-lg border-2 border-gray-700 hidden">
+        <img id="preview" class="w-full mx-auto block">
+      </div>
+    </div>
+  </div>
+
+  <!-- Dominant color -->
+  <div id="dominant" class="mb-8 hidden text-center"></div>
+
+  <!-- Colors -->
+  <div id="colors" class="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl w-full mb-12"></div>
+
+  <!-- Actions -->
+  <div id="actions" class="hidden flex gap-4 mb-12">
+    <button id="downloadJSON" class="px-5 py-2 bg-blue-600 rounded-lg hover:bg-blue-500 transition flex items-center">
+      <i data-feather="download" class="mr-2"></i> Descargar JSON
+    </button>
+    <button id="downloadPNG" class="px-5 py-2 bg-green-600 rounded-lg hover:bg-green-500 transition flex items-center">
+      <i data-feather="image" class="mr-2"></i> Descargar PNG
+    </button>
+  </div>
+
+  <!-- Footer -->
+  <div class="text-gray-500 text-sm mt-auto pt-8">
+    <p>Hecho con ❤️ usando Color Thief + TailwindCSS</p>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast"></div>
+
+  <!-- Color Thief -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/color-thief/2.3.2/color-thief.umd.js"></script>
+  <script>
+    const fileInput = document.getElementById("fileInput");
+    const preview = document.getElementById("preview");
+    const imageContainer = document.getElementById("imageContainer");
+    const colorsDiv = document.getElementById("colors");
+    const dominantDiv = document.getElementById("dominant");
+    const actions = document.getElementById("actions");
+    const downloadJSON = document.getElementById("downloadJSON");
+    const downloadPNG = document.getElementById("downloadPNG");
+    const toast = document.getElementById("toast");
+    const colorThief = new ColorThief();
+    let palette = [];
+
+    fileInput.addEventListener("change", e => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = ev => {
+        preview.src = ev.target.result;
+        imageContainer.classList.remove("hidden");
+        preview.onload = () => {
+          mostrarColores();
+          actions.classList.remove("hidden");
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+
+    function rgbToHex(r, g, b) {
+      return "#" + [r,g,b].map(x => {
+        const hex = x.toString(16);
+        return hex.length === 1 ? "0" + hex : hex;
+      }).join("");
+    }
+
+    function mostrarToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add("show");
+      setTimeout(() => toast.classList.remove("show"), 2000);
+    }
+
+    function mostrarColores() {
+      colorsDiv.innerHTML = "";
+      dominantDiv.innerHTML = "";
+
+      // Dominante
+      const dominant = colorThief.getColor(preview);
+      const dominantHex = rgbToHex(...dominant);
+      dominantDiv.classList.remove("hidden");
+      dominantDiv.innerHTML = `
+        <div class="inline-block p-4 rounded-xl shadow-lg" style="background:${dominantHex}; color:${(dominant[0]*0.299 + dominant[1]*0.587 + dominant[2]*0.114) > 125 ? '#000' : '#fff'}">
+          <p class="font-bold">Color Dominante</p>
+          <p>${dominantHex}</p>
+          <p>RGB(${dominant.join(",")})</p>
+        </div>
+      `;
+
+      // Paleta
+      palette = colorThief.getPalette(preview, 8);
+      palette.forEach(color => {
+        const hex = rgbToHex(color[0], color[1], color[2]);
+        const div = document.createElement("div");
+        div.className = "color-box p-4 rounded-xl shadow-lg flex flex-col items-center justify-center text-center";
+        div.style.background = hex;
+
+        const brightness = Math.round(((color[0] * 299) + (color[1] * 587) + (color[2] * 114)) / 1000);
+        const textColor = brightness > 125 ? '#000' : '#fff';
+
+        div.innerHTML = `
+          <p style="color:${textColor}" class="font-bold">${hex}</p>
+          <p style="color:${textColor}">RGB(${color.join(",")})</p>
+          <button class="mt-2 text-xs px-2 py-1 bg-black/40 rounded hover:bg-black/60 transition" style="color:${textColor}">
+            Copiar
+          </button>
+        `;
+
+        div.querySelector("button").addEventListener("click", () => {
+          navigator.clipboard.writeText(hex);
+          mostrarToast(`Color ${hex} copiado ✅`);
+        });
+
+        colorsDiv.appendChild(div);
+      });
+
+      feather.replace();
+    }
+
+    // Descargar JSON
+    downloadJSON.addEventListener("click", () => {
+      const data = palette.map(c => ({
+        hex: rgbToHex(...c),
+        rgb: c
+      }));
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "paleta.json";
+      a.click();
+      mostrarToast("Paleta descargada en JSON 📄");
+    });
+
+    // Descargar PNG
+    downloadPNG.addEventListener("click", () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = palette.length * 100;
+      canvas.height = 100;
+      const ctx = canvas.getContext("2d");
+      palette.forEach((c, i) => {
+        ctx.fillStyle = rgbToHex(...c);
+        ctx.fillRect(i * 100, 0, 100, 100);
+      });
+      const a = document.createElement("a");
+      a.href = canvas.toDataURL("image/png");
+      a.download = "paleta.png";
+      a.click();
+      mostrarToast("Paleta descargada en PNG  🖼️");
+    });
+
+    feather.replace();
+  </script>
+</body>
+</html>
